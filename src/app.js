@@ -1,8 +1,10 @@
 import dotenv from "dotenv";
 dotenv.config();
+console.log("MONGO_URI:", process.env.MONGO_URI);
 
 import express from "express"
 import mongoose from "mongoose";
+import bcrypt from "bcrypt";
 import multer from "multer";
 import { v2 as cloudinary } from "cloudinary";      
 import { CloudinaryStorage } from "multer-storage-cloudinary";
@@ -22,8 +24,17 @@ const cloudinaryStorage = new CloudinaryStorage({
         allowed_formats: ["jpg", "png", "jpeg"]
     }
 });
-
-const upload = multer({ storage: cloudinaryStorage });
+const upload = multer({
+    storage: cloudinaryStorage,
+    fileFilter: (req, file, cb) => {
+        if (file.mimetype.startsWith("image/")) {
+            cb(null, true);
+        } else {
+            cb(new Error("Only image files are allowed!"), false);
+        }
+    },
+    limits: { fileSize: 2 * 1024 * 1024 } // 2MB limit (optional)
+});
 
 import Register from "./models/registers.js";
 
@@ -105,29 +116,38 @@ app.get("/user-loggedin", (req, res) => {
 
 
 // Upload Profile Picture
-app.post("/upload-profile-pic", upload.single("profilePic"), async (req, res) => {
-    try {
-        if (!req.session.user) return res.redirect("/");
+app.post("/upload-profile-pic", (req, res) => {
 
-        const imageUrl = req.file.path; // Cloudinary URL
+    upload.single("profilePic")(req, res, async function (err) {
 
-        const updatedUser = await Register.findByIdAndUpdate(
-            req.session.user._id,
-            { profilePic: imageUrl },
-            { returnDocument: 'after' }
-        );
+        if (err) {
+            return res.status(400).send(err.message);
+        }
 
-        req.session.user.profilePic = updatedUser.profilePic;
+        try {
+            if (!req.session.user) return res.redirect("/");
 
-        req.session.save(err => {
-            if (err) console.log(err);
-            res.redirect("/user-loggedin");
-        });
+            const imageUrl = req.file.path;
 
-    } catch (err) {
-        console.log(err);
-        res.status(500).send("Upload failed");
-    }
+            const updatedUser = await Register.findByIdAndUpdate(
+                req.session.user._id,
+                { profilePic: imageUrl },
+                { returnDocument: "after" }
+            );
+
+            req.session.user.profilePic = updatedUser.profilePic;
+
+            req.session.save(err => {
+                if (err) console.log(err);
+                res.redirect("/user-loggedin?updated=true");
+            });
+
+        } catch (error) {
+            console.log(error);
+            res.status(500).send("Upload failed");
+        }
+
+    });
 });
 
 
@@ -136,23 +156,23 @@ app.post("/user-login-check", async (req, res) => {
         const check = await Register.findOne({ username: req.body.username.trim() });
         if (!check) return res.send("User not found");
 
-        if (check.password === req.body.password) {
-            req.session.user = {
-                _id: check._id,
-                username: check.username,
-                email: check.email,
-                phone: check.phone,
-                profilePic: check.profilePic
-            };
-            
-            // Save session and redirect
-            req.session.save(err => {
-                if (err) console.log(err);
-                res.redirect("/user-loggedin");
-            });
-        } else {
-            res.send("Wrong password");
-        }
+        // Compare hashed password
+        const isMatch = await bcrypt.compare(req.body.password, check.password);
+        if (!isMatch) return res.send("Wrong password");
+
+        req.session.user = {
+            _id: check._id,
+            username: check.username,
+            email: check.email,
+            phone: check.phone,
+            profilePic: check.profilePic
+        };
+
+        req.session.save(err => {
+            if (err) console.log(err);
+            res.redirect("/user-loggedin");
+        });
+
     } catch (err) {
         console.log(err);
         res.status(500).send("Server Error");
@@ -175,25 +195,61 @@ app.post("/user-signup-submit", async (req, resp) => {
         const password = req.body.password;
         const cpassword = req.body.confirm_password;
 
-        if (password === cpassword) {
-
-            const registerEmployee = new Register({
-                username: req.body.username,
-                email: req.body.email,
-                phone: req.body.phone,
-                password: req.body.password,            
-                confirm_password: req.body.confirm_password 
-            });
-
-            const registered = await registerEmployee.save();
-            resp.status(201).redirect("/");
-
-        } else {
-            resp.send("Password don't matches");
+        if (password !== cpassword) {
+            return resp.send("Passwords do not match");
         }
+
+        // Hash password
+        const hashedPassword = await bcrypt.hash(password, 10); // 10 rounds
+
+        const registerEmployee = new Register({
+            username: req.body.username,
+            email: req.body.email,
+            phone: req.body.phone,
+            password: hashedPassword,
+            confirm_password: hashedPassword // store hash, not plain text
+        });
+
+        const registered = await registerEmployee.save();
+        resp.status(201).redirect("/");
 
     } catch (error) {
         resp.status(400).send("error " + error.message);
+    }
+});
+
+
+//updates 
+app.post("/update-mobile", async (req, res) => {
+    try {
+        if (!req.session.user) {
+            return res.status(401).json({ success: false, message: "Not logged in" });
+        }
+
+        const newPhone = req.body.phone.trim();
+
+        // Validation
+        if (!/^[0-9]{10}$/.test(newPhone)) {
+            return res.json({ success: false, message: "Enter valid 10 digit number" });
+        }
+
+        const updatedUser = await Register.findByIdAndUpdate(
+            req.session.user._id,
+            { updated_phone: newPhone }, // ✅ saving in new field
+            { returnDocument: "after" }
+        );
+
+        // Update session also
+        req.session.user.updated_phone = updatedUser.updated_phone;
+
+        req.session.save(err => {
+            if (err) console.log(err);
+            res.json({ success: true, phone: updatedUser.updated_phone });
+        });
+
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ success: false, message: "Server error" });
     }
 });
 

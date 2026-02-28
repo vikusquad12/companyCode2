@@ -48,7 +48,7 @@
                 <div style="padding:10px; border-bottom:1px solid #eee;">
                     <strong><%= user.username %></strong><br>
                     <small><%= user.email %></small><br>
-                    <small id="dropdownPhone">Phone: <%= user.phone %></small>
+                    <small id="dropdownPhone">Phone: <%= user.updated_phone || user.phone %></small>
                 </div>
                 <!-- Change Picture Button -->
                 <button type="button" onclick="document.getElementById('profileUpload').click()">Change Picture</button>
@@ -58,7 +58,7 @@
 
     <!-- Hidden Form -->
     <form action="/upload-profile-pic" method="POST" enctype="multipart/form-data" id="profileForm" style="display:none;">
-        <input type="file" name="profilePic" id="profileUpload" onchange="this.form.submit()">
+        <input type="file" accept="image/*" name="profilePic" id="profileUpload" > <!-- onchange="this.form.submit()-->
     </form>
 </div>
 
@@ -76,7 +76,7 @@
     <div class="profile-card">
         <h2><%= user._id %></h2>
         <h3><%= user.username %></h3>
-        <p>Contact No: <span id="mobileNumber"><%= user.phone %></span></p>
+        <p>Contact No: <span id="mobileNumber"><%= user.updated_phone || user.phone %></span></p>
         <p>Email: <%= user.email %></p>
     </div>
 
@@ -119,6 +119,18 @@
 
 </div>
 
+
+
+<!-- Upload Overlay -->
+ <div id="uploadOverlay" class="overlay">
+    <div class="popup">
+        <div class="loader" id="loader"></div>
+        <p id="popupMessage">Processing...</p>
+        <button id="popupOk" onclick="closePopup()">OK</button>
+    </div>
+</div>
+
+
 <script>
 /* ================= SIDEBAR ================= */
 function toggleSidebar(){
@@ -141,14 +153,36 @@ function changePicture(){
 }
 
 /* Update Mobile Number */
-function updateMobile(){
-    let mobile=prompt("Enter new mobile number:", "<%= user.phone %>");
-    if(mobile){
-        document.getElementById("mobileNumber").innerText=mobile;
-        document.getElementById("dropdownPhone").innerText="Phone: "+mobile;
-        alert("Mobile number updated!");
+async function updateMobile(){
+    let mobile = prompt("Enter new mobile number:", "<%= user.phone %>");
+
+    if(!mobile) return;
+
+    try {
+        const response = await fetch("/update-mobile", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ phone: mobile })
+        });
+
+        const data = await response.json();
+
+        if(data.success){
+            document.getElementById("mobileNumber").innerText = data.phone;
+            document.getElementById("dropdownPhone").innerText = "Phone: " + data.phone;
+            alert("Mobile number updated successfully!");
+        } else {
+            alert(data.message);
+        }
+
+    } catch (error) {
+        alert("Update failed");
     }
 }
+
+
 
 /* Logout */
 /* Logout */
@@ -156,6 +190,60 @@ function logout(){
     alert("Logged out successfully!");
     window.location.href = "/logout"; // server destroys session and redirects
 }
+
+/* ===== Upload Popup Logic ===== */
+const form = document.getElementById("profileForm");
+const fileInput = document.getElementById("profileUpload");
+const overlay = document.getElementById("uploadOverlay");
+const message = document.getElementById("popupMessage");
+const okBtn = document.getElementById("popupOk");
+const loader = document.getElementById("loader");
+
+let uploadFinished = false;
+
+/* When file selected */
+fileInput.addEventListener("change", function(){
+    if(this.files.length > 0){
+        uploadFinished = false;
+
+        overlay.classList.add("active");
+        message.innerText = "Processing...";
+        okBtn.style.display = "none";
+        loader.style.display = "block";
+
+        form.submit();
+    }
+});
+
+/* After page reload (upload success) */
+window.addEventListener("load", function(){
+    const urlParams = new URLSearchParams(window.location.search);
+    if(urlParams.get("updated") === "true"){
+        overlay.classList.add("active");
+
+        uploadFinished = true;
+        message.innerText = "Image Updated Successfully!";
+        loader.style.display = "none";
+        okBtn.style.display = "inline-block";
+    }
+});
+
+/* Close only if upload finished */
+function closePopup(){
+    if(uploadFinished){
+        overlay.classList.remove("active");
+        window.history.replaceState({}, document.title, "/user-loggedin");
+    }
+}
+
+/* Background click only works after upload */
+overlay.addEventListener("click", function(e){
+    if(e.target === overlay && uploadFinished){
+        closePopup();
+    }
+});
+
+
 
 /* ================= DASHBOARD DATA ================= */
 let salesData=[

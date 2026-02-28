@@ -11,9 +11,13 @@ const employeeSchema = new mongoose.Schema({
         unique:true
     },
     phone: {
-        type:Number,
-        required:true,
-        unique:true
+        type: String,
+        required: true,
+        unique: true
+    },
+    updated_phone: {
+        type:String,
+        required:false 
     },
     password: {
         type:String,
