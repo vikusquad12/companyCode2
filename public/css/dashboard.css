@@ -155,6 +155,64 @@ body{
     background:#f0f0f0;
 }
 
+/* ===== Upload Overlay ===== */
+
+.overlay{
+    position:fixed;
+    top:0;
+    left:0;
+    width:100%;
+    height:100%;
+    background:rgba(0,0,0,0.5);
+    display:none;
+    justify-content:center;
+    align-items:center;
+    z-index:2000;
+}
+
+.overlay.active{
+    display:flex;
+}
+
+.popup{
+    background:white;
+    padding:30px 40px;
+    border-radius:10px;
+    text-align:center;
+    width:300px;
+    animation:fadeIn 0.3s ease;
+}
+
+.loader{
+    border:4px solid #f3f3f3;
+    border-top:4px solid #1aa0c6;
+    border-radius:50%;
+    width:40px;
+    height:40px;
+    margin:0 auto 15px;
+    animation:spin 1s linear infinite;
+}
+
+.popup button{
+    margin-top:15px;
+    padding:8px 20px;
+    border:none;
+    background:#1aa0c6;
+    color:white;
+    border-radius:5px;
+    cursor:pointer;
+    display:none; 
+}
+
+@keyframes spin{
+    100%{ transform:rotate(360deg); }
+}
+
+@keyframes fadeIn{
+    from{ opacity:0; transform:scale(0.9);}
+    to{ opacity:1; transform:scale(1);}
+}
+
 /* Filter */
 .filter-box{
     background:white;
